@@ -6,7 +6,7 @@ Output moves: 1-based positions of tiles to click, in order.
 from __future__ import annotations
 
 import time
-from typing import Optional
+from collections import deque
 
 GOAL = tuple(range(1, 16)) + (0,)
 GOAL_POS = {tile: i for i, tile in enumerate(GOAL) if tile}
@@ -20,9 +20,16 @@ for pos in range(16):
     if c < 3: ns.append(pos + 1)
     NEIGHBORS.append(tuple(ns))
 
+_WD_ROW = None
+_WD_COL = None
+
 
 class SearchLimit(Exception):
-    pass
+    def __init__(self, nodes, bound, elapsed):
+        super().__init__("search limit")
+        self.nodes = nodes
+        self.bound = bound
+        self.elapsed = elapsed
 
 
 def validate(board):
@@ -43,8 +50,53 @@ def solvable(board):
     return (inversions + row_from_bottom) % 2 == 1
 
 
-def heuristic(board):
-    # Manhattan distance plus a greedy set of disjoint linear conflicts.
+def _build_walking_distance():
+    """Build the small 4x4 row/column abstraction table (24,964 states)."""
+    counts = [0] * 16
+    for line in range(4):
+        counts[line * 4 + line] = 4 - (line == 3)
+    start = (3, tuple(counts))
+    distances = {start: 0}
+    queue = deque([start])
+
+    while queue:
+        blank_line, state_counts = queue.popleft()
+        distance = distances[(blank_line, state_counts)]
+        for adjacent in (blank_line - 1, blank_line + 1):
+            if not 0 <= adjacent < 4:
+                continue
+            for goal_line in range(4):
+                source = adjacent * 4 + goal_line
+                if state_counts[source] == 0:
+                    continue
+                changed = list(state_counts)
+                changed[source] -= 1
+                changed[blank_line * 4 + goal_line] += 1
+                next_state = (adjacent, tuple(changed))
+                if next_state not in distances:
+                    distances[next_state] = distance + 1
+                    queue.append(next_state)
+    return distances
+
+
+def _walking_distance(board, table, axis):
+    blank = board.index(0)
+    br, bc = divmod(blank, 4)
+    blank_line = br if axis == 0 else bc
+    counts = [0] * 16
+    for pos, tile in enumerate(board):
+        if not tile:
+            continue
+        r, c = divmod(pos, 4)
+        goal = GOAL_POS[tile]
+        gr, gc = divmod(goal, 4)
+        line = r if axis == 0 else c
+        goal_line = gr if axis == 0 else gc
+        counts[line * 4 + goal_line] += 1
+    return table[(blank_line, tuple(counts))]
+
+
+def _manhattan_linear_conflict(board):
     total = 0
     for i, tile in enumerate(board):
         if tile:
@@ -55,43 +107,59 @@ def heuristic(board):
 
     conflicts = 0
     used_tiles = set()
-    # Select vertex-disjoint conflicts across rows AND columns, so the
-    # linear-conflict addition stays admissible (a tile is counted once).
     for r in range(4):
         candidates = []
         for c1 in range(4):
             t1 = board[r * 4 + c1]
-            if not t1 or (GOAL_POS[t1] // 4) != r:
+            if not t1 or GOAL_POS[t1] // 4 != r:
                 continue
             for c2 in range(c1 + 1, 4):
                 t2 = board[r * 4 + c2]
-                if t2 and (GOAL_POS[t2] // 4) == r:
-                    if (GOAL_POS[t1] % 4) > (GOAL_POS[t2] % 4):
+                if t2 and GOAL_POS[t2] // 4 == r:
+                    if GOAL_POS[t1] % 4 > GOAL_POS[t2] % 4:
                         candidates.append((c1, c2))
         for a, b in candidates:
             ia, ib = r * 4 + a, r * 4 + b
             if ia not in used_tiles and ib not in used_tiles:
-                used_tiles.add(ia); used_tiles.add(ib); conflicts += 1
+                used_tiles.add(ia)
+                used_tiles.add(ib)
+                conflicts += 1
 
     for c in range(4):
         candidates = []
         for r1 in range(4):
             t1 = board[r1 * 4 + c]
-            if not t1 or (GOAL_POS[t1] % 4) != c:
+            if not t1 or GOAL_POS[t1] % 4 != c:
                 continue
             for r2 in range(r1 + 1, 4):
                 t2 = board[r2 * 4 + c]
-                if t2 and (GOAL_POS[t2] % 4) == c:
-                    if (GOAL_POS[t1] // 4) > (GOAL_POS[t2] // 4):
+                if t2 and GOAL_POS[t2] % 4 == c:
+                    if GOAL_POS[t1] // 4 > GOAL_POS[t2] // 4:
                         candidates.append((r1, r2))
         for a, b in candidates:
             ia, ib = a * 4 + c, b * 4 + c
             if ia not in used_tiles and ib not in used_tiles:
-                used_tiles.add(ia); used_tiles.add(ib); conflicts += 1
+                used_tiles.add(ia)
+                used_tiles.add(ib)
+                conflicts += 1
     return total + 2 * conflicts
 
 
-def solve(board, time_limit=8.0, node_limit=8_000_000):
+def heuristic(board):
+    global _WD_ROW, _WD_COL
+    if _WD_ROW is None:
+        _WD_ROW = _build_walking_distance()
+        _WD_COL = _WD_ROW
+    # Walking Distance is substantially stronger than Manhattan on hard
+    # 15-puzzle states. max() keeps the estimate admissible.
+    walking = (
+        _walking_distance(board, _WD_ROW, 0)
+        + _walking_distance(board, _WD_COL, 1)
+    )
+    return max(walking, _manhattan_linear_conflict(board))
+
+
+def solve(board, time_limit=20.0, node_limit=20_000_000):
     started = time.perf_counter()
     start_board = validate(board)
     if not solvable(start_board):
@@ -99,48 +167,49 @@ def solve(board, time_limit=8.0, node_limit=8_000_000):
     if start_board == GOAL:
         return [], 0, 0.0
 
+    initial_h = heuristic(start_board)
     work = list(start_board)
     blank = work.index(0)
     path = []
     nodes = 0
     deadline = time.perf_counter() + max(0.05, min(float(time_limit), 20.0))
     FOUND = object()
+    bound = initial_h
 
-    def dfs(g, bound, hole, previous_hole, h, seen):
+    def dfs(g, current_bound, hole, previous_hole, h, seen):
         nonlocal nodes
         nodes += 1
         if nodes > node_limit or time.perf_counter() > deadline:
-            raise SearchLimit
+            raise SearchLimit(nodes, current_bound, time.perf_counter() - started)
         f = g + h
-        if f > bound:
+        if f > current_bound:
             return f
         if h == 0:
             return FOUND
 
         minimum = float("inf")
-        # Explore the most promising neighbors first by resulting Manhattan/LC.
         choices = []
         for nxt in NEIGHBORS[hole]:
             if nxt == previous_hole:
                 continue
             tile = work[nxt]
             work[hole], work[nxt] = tile, 0
-            nh = heuristic(work)
+            next_h = heuristic(work)
             work[nxt], work[hole] = tile, 0
-            choices.append((nh, nxt, tile))
-        choices.sort(key=lambda x: x[0])
+            choices.append((next_h, nxt, tile))
+        choices.sort(key=lambda item: item[0])
 
-        for nh, nxt, tile in choices:
+        for next_h, nxt, tile in choices:
             work[hole], work[nxt] = tile, 0
             state = tuple(work)
-            ng = g + 1
+            next_g = g + 1
             old_g = seen.get(state)
-            if old_g is not None and old_g <= ng:
+            if old_g is not None and old_g <= next_g:
                 work[nxt], work[hole] = tile, 0
                 continue
-            seen[state] = ng
-            path.append(nxt + 1)  # 1-based position to click
-            result = dfs(ng, bound, nxt, hole, nh, seen)
+            seen[state] = next_g
+            path.append(nxt + 1)
+            result = dfs(next_g, current_bound, nxt, hole, next_h, seen)
             if result is FOUND:
                 return FOUND
             path.pop()
@@ -149,10 +218,9 @@ def solve(board, time_limit=8.0, node_limit=8_000_000):
                 minimum = result
         return minimum
 
-    bound = heuristic(work)
     while True:
         seen = {tuple(work): 0}
-        result = dfs(0, bound, blank, -1, bound, seen)
+        result = dfs(0, bound, blank, -1, initial_h, seen)
         if result is FOUND:
             return list(path), nodes, time.perf_counter() - started
         if result == float("inf"):
@@ -160,15 +228,28 @@ def solve(board, time_limit=8.0, node_limit=8_000_000):
         bound = result
 
 
-def solve_safe(board, time_limit=8.0, node_limit=8_000_000):
+def solve_safe(board, time_limit=20.0, node_limit=20_000_000):
     started = time.perf_counter()
     try:
         path, nodes, _ = solve(board, time_limit, node_limit)
-        return {"ok": True, "moves": path, "move_count": len(path),
-                "nodes": nodes, "elapsed_ms": round((time.perf_counter() - started) * 1000, 2)}
-    except SearchLimit:
-        return {"ok": False, "error": "limite de tempo ou de nos atingido",
-                "nodes": None, "elapsed_ms": round((time.perf_counter() - started) * 1000, 2)}
+        return {
+            "ok": True,
+            "moves": path,
+            "move_count": len(path),
+            "nodes": nodes,
+            "elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
+        }
+    except SearchLimit as exc:
+        return {
+            "ok": False,
+            "error": "limite de tempo ou de nos atingido",
+            "nodes": exc.nodes,
+            "bound": exc.bound,
+            "elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
+        }
     except ValueError as exc:
-        return {"ok": False, "error": str(exc),
-                "elapsed_ms": round((time.perf_counter() - started) * 1000, 2)}
+        return {
+            "ok": False,
+            "error": str(exc),
+            "elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
+        }
