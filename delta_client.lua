@@ -7,7 +7,7 @@ local CoreGui = game:GetService("CoreGui")
 local HttpService = game:GetService("HttpService")
 local player = Players.LocalPlayer
 
-local API_URL = "https://COLOQUE-A-URL-DO-RENDER-AQUI/solve"
+local API_URL = "https://sea-beast-solver.onrender.com/solve"
 local MOVE_TIMEOUT = 4
 local TARGET = {
     ["16991583334"] = 1, ["16991583165"] = 2,
