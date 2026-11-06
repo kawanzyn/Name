@@ -54,7 +54,8 @@ def heuristic(board):
             total += abs(r - gr) + abs(c - gc)
 
     conflicts = 0
-    # Greedily select vertex-disjoint conflicts in each row.
+    # Select vertex-disjoint conflicts across rows AND columns, so the
+    # linear-conflict addition stays admissible (a tile is counted once).
     for r in range(4):
         candidates = []
         for c1 in range(4):
@@ -66,10 +67,10 @@ def heuristic(board):
                 if t2 and (GOAL_POS[t2] // 4) == r:
                     if (GOAL_POS[t1] % 4) > (GOAL_POS[t2] % 4):
                         candidates.append((c1, c2))
-        used = set()
         for a, b in candidates:
-            if a not in used and b not in used:
-                used.add(a); used.add(b); conflicts += 1
+            ia, ib = r * 4 + a, r * 4 + b
+            if ia not in used_tiles and ib not in used_tiles:
+                used_tiles.add(ia); used_tiles.add(ib); conflicts += 1
 
     for c in range(4):
         candidates = []
@@ -82,10 +83,10 @@ def heuristic(board):
                 if t2 and (GOAL_POS[t2] % 4) == c:
                     if (GOAL_POS[t1] // 4) > (GOAL_POS[t2] // 4):
                         candidates.append((r1, r2))
-        used = set()
         for a, b in candidates:
-            if a not in used and b not in used:
-                used.add(a); used.add(b); conflicts += 1
+            ia, ib = a * 4 + c, b * 4 + c
+            if ia not in used_tiles and ib not in used_tiles:
+                used_tiles.add(ia); used_tiles.add(ib); conflicts += 1
     return total + 2 * conflicts
 
 
