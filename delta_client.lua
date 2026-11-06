@@ -196,7 +196,15 @@ local function askSolver(board)
         return nil, "Resposta invalida do servidor (HTTP " .. tostring(code) .. ")"
     end
     if not data.ok then
-        return nil, data.error or ("Servidor retornou HTTP " .. tostring(code))
+        local message = data.error or ("Servidor retornou HTTP " .. tostring(code))
+        local details = {}
+        if data.nodes then table.insert(details, "nos=" .. tostring(data.nodes)) end
+        if data.bound then table.insert(details, "limite=" .. tostring(data.bound)) end
+        if data.elapsed_ms then table.insert(details, "ms=" .. tostring(data.elapsed_ms)) end
+        if #details > 0 then
+            message = message .. " [" .. table.concat(details, " | ") .. "]"
+        end
+        return nil, message
     end
     return data
 end
