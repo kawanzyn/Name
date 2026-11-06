@@ -181,7 +181,7 @@ local function askSolver(board)
             Url = API_URL,
             Method = "POST",
             Headers = headers,
-            Body = HttpService:JSONEncode({board = board, time_limit = 8, node_limit = 8000000})
+            Body = HttpService:JSONEncode({board = board, time_limit = 20, node_limit = 20000000})
         })
     end)
     if not ok then return nil, "Falha HTTP: " .. tostring(err) end
@@ -291,4 +291,4 @@ stop.MouseButton1Click:Connect(function()
     say("Solicitando parada...")
 end)
 
-say("Cliente carregado. Configure o servidor antes de usar.")
+say("Cliente carregado. Pronto para ler o tabuleiro.")
