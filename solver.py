@@ -54,6 +54,7 @@ def heuristic(board):
             total += abs(r - gr) + abs(c - gc)
 
     conflicts = 0
+    used_tiles = set()
     # Select vertex-disjoint conflicts across rows AND columns, so the
     # linear-conflict addition stays admissible (a tile is counted once).
     for r in range(4):
