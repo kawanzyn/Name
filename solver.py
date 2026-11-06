@@ -51,7 +51,7 @@ def solvable(board):
 
 
 def _build_walking_distance():
-    """Build the small 4x4 row/column abstraction table (24,964 states)."""
+    """Build the complete 4x4 Walking Distance abstraction table."""
     counts = [0] * 16
     for line in range(4):
         counts[line * 4 + line] = 4 - (line == 3)
@@ -150,8 +150,6 @@ def heuristic(board):
     if _WD_ROW is None:
         _WD_ROW = _build_walking_distance()
         _WD_COL = _WD_ROW
-    # Walking Distance is substantially stronger than Manhattan on hard
-    # 15-puzzle states. max() keeps the estimate admissible.
     walking = (
         _walking_distance(board, _WD_ROW, 0)
         + _walking_distance(board, _WD_COL, 1)
@@ -173,7 +171,7 @@ def solve(board, time_limit=20.0, node_limit=20_000_000):
     path = []
     nodes = 0
     deadline = time.perf_counter() + max(0.05, min(float(time_limit), 20.0))
-    FOUND = object()
+    found = object()
     bound = initial_h
 
     def dfs(g, current_bound, hole, previous_hole, h, seen):
@@ -185,7 +183,7 @@ def solve(board, time_limit=20.0, node_limit=20_000_000):
         if f > current_bound:
             return f
         if h == 0:
-            return FOUND
+            return found
 
         minimum = float("inf")
         choices = []
@@ -210,8 +208,8 @@ def solve(board, time_limit=20.0, node_limit=20_000_000):
             seen[state] = next_g
             path.append(nxt + 1)
             result = dfs(next_g, current_bound, nxt, hole, next_h, seen)
-            if result is FOUND:
-                return FOUND
+            if result is found:
+                return found
             path.pop()
             work[nxt], work[hole] = tile, 0
             if result < minimum:
@@ -221,7 +219,7 @@ def solve(board, time_limit=20.0, node_limit=20_000_000):
     while True:
         seen = {tuple(work): 0}
         result = dfs(0, bound, blank, -1, initial_h, seen)
-        if result is FOUND:
+        if result is found:
             return list(path), nodes, time.perf_counter() - started
         if result == float("inf"):
             raise ValueError("nenhuma solucao encontrada")
