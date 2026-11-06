@@ -1,21 +1,24 @@
 # Sea Beast Puzzle Solver
 
-Projeto para resolver o tabuleiro deslizante 4x4 do Sea Beast Puzzle.
+Projeto para resolver o tabuleiro deslizante 4x4 do Sea Beast Puzzle sem fazer a busca pesada dentro do Delta.
 
 ## Arquitetura
 
-- **Delta/Lua:** lê as 16 casas e identifica o vazio.
+- **Delta/Lua:** lê as 16 casas e identifica o espaço vazio.
 - **API Python:** recebe `board` e calcula a sequência fora do Roblox.
 - **Delta/Lua:** recebe `moves` e executa os cliques, verificando cada troca.
 
-O GitHub guarda o código. O cálculo acontece no serviço web implantado (por exemplo, Render), não no GitHub Actions.
+O GitHub guarda o código e executa os testes automatizados. O cálculo em tempo real acontece no serviço web implantado (por exemplo, Render), não no GitHub Actions.
 
 ## Arquivos
 
 - `solver.py`: algoritmo IDA* em Python.
 - `server.py`: API HTTP Flask.
+- `delta_client.lua`: cliente para o Delta (leitura, requisição e movimentação verificada).
 - `requirements.txt`: dependências.
 - `render.yaml`: configuração inicial de deploy no Render.
+- `tests/test_solver.py`: testes básicos do algoritmo.
+- `.github/workflows/tests.yml`: executa os testes a cada push e pull request.
 
 ## API
 
@@ -33,18 +36,24 @@ O GitHub guarda o código. O cálculo acontece no serviço web implantado (por e
 
 O tabuleiro é uma lista de 16 inteiros em ordem da esquerda para a direita e de cima para baixo. O espaço vazio é `0`. A resposta contém `moves`, uma lista de posições de 1 a 16 indicando qual peça clicar em cada passo.
 
-Se a variável de ambiente `API_TOKEN` estiver configurada, envie o mesmo valor no cabeçalho `X-API-Key`.
+Se a variável de ambiente `API_TOKEN` estiver configurada, envie o mesmo valor no cabeçalho `X-API-Key`. O cliente Lua possui um campo para inserir esse token sem gravá-lo no repositório.
 
 ## Deploy
 
 1. No Render, crie um **Web Service** conectado a este repositório.
 2. O arquivo `render.yaml` fornece os comandos de build e start.
-3. Configure/guarde o valor de `API_TOKEN` no painel do serviço.
-4. Use a URL pública do serviço no cliente Lua.
+3. Copie a URL pública do serviço.
+4. Abra `delta_client.lua` e substitua `https://COLOQUE-A-URL-DO-RENDER-AQUI/solve` pela URL real terminada em `/solve`.
+5. Se o Render tiver criado `API_TOKEN`, copie o valor no campo de token da interface do Delta.
 
-## Observações
+## Usar o cliente no Delta
 
-- O serviço pode levar mais que dois segundos em tabuleiros difíceis; o tempo depende da configuração inicial e dos recursos do host.
+Depois de configurar a URL no arquivo, carregue o arquivo Lua pelo raw URL do GitHub. O cliente lê o tabuleiro, consulta a API e só continua quando cada troca for confirmada pelo jogo.
+
+## Limites importantes
+
+- Ainda não há medição real de desempenho com os tabuleiros do jogo. O tempo depende da dificuldade do embaralhamento e dos recursos do host.
 - O plano gratuito pode suspender o serviço quando inativo, aumentando o tempo da primeira chamada.
+- O algoritmo tem limite de tempo e de nós; tabuleiros muito difíceis podem retornar limite atingido.
 - Nunca coloque tokens privados do GitHub dentro do script Lua.
-- Antes de executar uma sequência no jogo, o cliente deve validar cada movimento e parar se o tabuleiro não confirmar a troca.
+- O cliente para se o jogo não confirmar um movimento; não tenta clicar repetidamente no mesmo lugar.
