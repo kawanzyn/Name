@@ -23,8 +23,11 @@ def solve_route():
 
     payload = request.get_json(silent=True) or {}
     board = payload.get("board")
-    time_limit = payload.get("time_limit", 8)
-    node_limit = payload.get("node_limit", 8_000_000)
+    try:
+        time_limit = max(0.1, min(float(payload.get("time_limit", 8)), 20.0))
+        node_limit = max(10_000, min(int(payload.get("node_limit", 8_000_000)), 20_000_000))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "time_limit/node_limit invalidos"}), 400
 
     try:
         result = solve_safe(board, time_limit=time_limit, node_limit=node_limit)
